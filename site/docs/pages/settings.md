@@ -13,7 +13,7 @@ It opens in your terminal and covers:
 | Setting | What it controls | Default |
 | --- | --- | --- |
 | Harness | Which agent new crewmates run: Claude Code, Codex, pi or fx | Claude Code |
-| Model and effort | The model and thinking level for each harness | The harness's own default |
+| Model and effort | The model and thinking level for each harness. With Routing on and profiles for the harness, they grey out and list the profiles: the router picks one per task | The harness's own default |
 | Routing | Let OpenAI Decisions or TypeSafe Jev pick each crewmate's model from profiles you approve. See [Model routing](?p=model-routing) | Off |
 | Router key | The routing provider's API key, typed or pasted without showing it and saved to `keys.json` (readable only by you). `OPENAI_API_KEY` or `TYPESAFE_API_KEY` still wins | Not set |
 | Placement | Crewmates in hidden tabs, split beside the leader, or (Rex) in no tab at all | Hidden tabs |
