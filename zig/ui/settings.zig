@@ -12,6 +12,7 @@ const term = @import("term.zig");
 const picker = @import("picker.zig");
 const theme = @import("theme.zig");
 const routing = @import("../core/routing.zig");
+const api_keys = @import("../core/keys.zig");
 
 const Obj = json.Obj;
 const Config = *Obj;
@@ -345,6 +346,60 @@ fn cRouting(c: Config, ask: Ask) anyerror!void {
     c.put("routing", (try routing.validateRouting(base.val())).val());
 }
 
+/// The active router's key: from its environment variable, saved here, or missing.
+fn vKey(c: Config) []const u8 {
+    const p = sRouter(c);
+    if (rt.eql(p, "off")) return "routing off";
+    if (rt.getenvNonEmpty(api_keys.envName(p)) != null) return rt.concat(&.{ "from $", api_keys.envName(p) });
+    if (api_keys.stored(p)) |k| return rt.concat(&.{ "saved ", api_keys.hint(k) });
+    return "not set";
+}
+fn cKey(c: Config, ask: Ask) anyerror!void {
+    const p = sRouter(c);
+    var items: std.ArrayListUnmanaged(PickItem) = .empty;
+    if (rt.eql(p, "off")) {
+        try items.append(rt.a, .{ .value = "", .label = "pick a router first" });
+    } else {
+        try items.append(rt.a, .{ .value = "enter", .label = "type or paste a key" });
+        if (api_keys.stored(p) != null) try items.append(rt.a, .{ .value = "remove", .label = "remove the saved key" });
+    }
+    const v = try ask(.{ .title = rt.concat(&.{ "Key for ", p }), .items = items.items });
+    const x = v orelse return;
+    if (rt.eql(p, "off")) return rt.fail(null, "Pick a router first; the key is for the router", .{});
+    if (rt.eql(x, "remove")) return api_keys.save(p, null);
+    if (!rt.eql(x, "enter")) return;
+    const typed = try readSecret(rt.concat(&.{ "Key for ", p, " (", api_keys.envName(p), ")" })) orelse return;
+    if (rt.trim(typed).len > 0) try api_keys.save(p, typed);
+}
+
+/// A line typed or pasted without showing it: a dot per character. Null when cancelled.
+fn readSecret(title: []const u8) !?[]const u8 {
+    var raw: term.Raw = .{};
+    raw.enable();
+    defer {
+        raw.disable();
+        rt.writeStdout(ansi.screen.clear);
+    }
+    var typed: std.ArrayListUnmanaged(u8) = .empty;
+    var reader: term.KeyReader = .{};
+    while (true) {
+        const sz = term.size(80, 24);
+        const dots = ansi.repeat("•", @min(typed.items.len, sz.cols -| 10));
+        rt.writeStdout(rt.concat(&.{ ansi.screen.clear, ansi.screen.at(2, 3), ansi.bold(title), ansi.screen.at(4, 3), ansi.fg.cyan("›"), " ", dots, ansi.inverse(" "), ansi.screen.at(sz.rows -| 1, 3), ansi.dim("type or paste · enter saves · esc cancels"), ansi.screen.at(6, 3), ansi.dim(rt.concat(&.{ "saved to ", api_keys.file(), ", readable only by you" })) }));
+        const data = term.readStdin(reader.timeoutMs() orelse -1) orelse return null;
+        for (if (data.len == 0) reader.expire() else reader.feed(data)) |key| {
+            const name = key.name orelse "";
+            if ((key.ctrl and rt.eql(name, "c")) or rt.eql(name, "escape")) return null;
+            if (rt.eql(name, "return") or rt.eql(name, "enter")) return typed.items;
+            if (rt.eql(name, "backspace")) {
+                if (typed.items.len > 0) typed.items.len -= 1;
+            } else if (key.ctrl and rt.eql(name, "u")) {
+                typed.items.len = 0;
+            } else if (key.ch) |ch| if (!key.ctrl and !key.meta and ch.len > 0 and ch[0] > ' ') try typed.appendSlice(rt.a, ch);
+        }
+    }
+}
+
 fn sUsagePane(c: Config) bool {
     return settings(c).boolean("usage_pane") orelse true;
 }
@@ -420,6 +475,7 @@ pub const SETTINGS_ROWS = [_]SettingsRow{
     .{ .section = "Crew", .label = "Model", .value = modelOrDefault, .change = cModel, .flag = "--model", .clear = "--clear-model" },
     .{ .section = "Crew", .label = "Effort", .value = thinkingOrDefault, .change = cEffort, .flag = "--thinking", .clear = "--clear-thinking" },
     .{ .section = "Crew", .label = "Routing", .value = vRouting, .change = cRouting, .flag = "--router" },
+    .{ .section = "Crew", .label = "Router key", .value = vKey, .change = cKey, .flag = "" },
     .{ .section = "Crew", .label = "Placement", .value = vPlacement, .change = cPlacement, .flag = "--placement" },
     .{ .section = "Crew", .label = "Popup", .value = vPopup, .change = cPopup, .shown = canFloat, .flag = "--popup" },
     .{ .section = "Crew", .label = "Worktrees", .value = vWorktree, .change = cWorktree, .flag = "--worktree-mode" },
@@ -524,6 +580,7 @@ fn choicesOf(row: SettingsRow, c: Config) Choices {
     const o = captured orelse return .{ .items = &.{ .{ .value = "on" }, .{ .value = "off" } }, .current = row.value(c), .toggle = true };
     const cur = o.current orelse "";
     for (o.items) |it| if (rt.eql(it.value, cur)) return .{ .items = o.items, .current = cur };
+    if (o.current == null) return .{ .items = o.items, .current = cur };
     // A value typed in rather than picked from the list: shown after it, as the row shows it.
     const now = ansi.stripSgr(row.value(c));
     var items: std.ArrayListUnmanaged(PickItem) = .empty;
@@ -554,19 +611,20 @@ fn choicesPanel(row: SettingsRow, c: Config, height: usize, accent: ansi.Paint, 
     out.appendSlice(rt.a, &.{ ansi.bold(row.label), "" }) catch {};
     const room = height -| (out.items.len + @as(usize, if (cmd.len > 0) 2 else 0));
     const n = ch.items.len;
-    var at: usize = 0;
+    // An action list (the router key) has no current item.
+    var at: ?usize = null;
     for (ch.items, 0..) |it, i| if (rt.eql(it.value, ch.current)) {
         at = i;
         break;
     };
     const count = if (n <= room) n else room -| 1;
-    const start = if (count == 0) 0 else @min((cursor orelse at) -| count / 2, n - count);
+    const start = if (count == 0) 0 else @min((cursor orelse at orelse 0) -| count / 2, n - count);
     const swatch = rt.eql(row.flag, "--accent");
     for (ch.items[start .. start + count], start..) |it, i| {
         const label = if (swatch) rt.concat(&.{ accentSwatch(it.value), " ", it.label orelse it.value }) else it.label orelse it.value;
         const under = cursor != null and cursor.? == i;
         const dot = if (i == at) accent.apply("● ") else ansi.dim("○ ");
-        const text = if (under) accent.apply(ansi.bold(label)) else if (i == at) accent.apply(label) else label;
+        const text = if (under) accent.apply(ansi.bold(label)) else if (at == i) accent.apply(label) else label;
         out.append(rt.a, rt.concat(&.{ if (under) accent.apply("❯ ") else "  ", dot, text })) catch {};
     }
     if (count < n and room > 0) out.append(rt.a, ansi.dim(rt.fmt("    {d} more", .{n - count}))) catch {};
@@ -883,13 +941,13 @@ test "a wide page lists the selected row's choices beside it, with the command t
     // A toggle shows on and off; a stall time typed in is listed after the presets.
     c.putInt("stall_minutes", 45);
     var found = false;
-    for (choicesPanel(SETTINGS_ROWS[10], c, 20, .{}, null)) |l| found = found or rt.eql(ansi.stripSgr(l), "  ● 45 min");
+    for (choicesPanel(SETTINGS_ROWS[11], c, 20, .{}, null)) |l| found = found or rt.eql(ansi.stripSgr(l), "  ● 45 min");
     try std.testing.expect(found);
-    try std.testing.expectEqual(@as(usize, 2), choicesOf(SETTINGS_ROWS[7], c).items.len);
-    try std.testing.expectEqualStrings("lodestar config set --accent '#89b482'", commandFor(SETTINGS_ROWS[16], "#89b482"));
+    try std.testing.expectEqual(@as(usize, 2), choicesOf(SETTINGS_ROWS[8], c).items.len);
+    try std.testing.expectEqualStrings("lodestar config set --accent '#89b482'", commandFor(SETTINGS_ROWS[17], "#89b482"));
     try std.testing.expectEqualStrings("lodestar config set --clear-model", commandFor(SETTINGS_ROWS[1], ""));
     // A list longer than the room shows the part around the current value and how many it left out.
-    const short = choicesPanel(SETTINGS_ROWS[16], c, 6, .{}, null);
+    const short = choicesPanel(SETTINGS_ROWS[17], c, 6, .{}, null);
     try std.testing.expectEqualStrings("    6 more", ansi.stripSgr(short[3]));
     // Too narrow for it: no panel.
     for (renderSettings(c, 0, null, 60, 34, "", .{})) |l| try std.testing.expect(std.mem.indexOf(u8, l, "│") == null);

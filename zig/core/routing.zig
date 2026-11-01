@@ -111,6 +111,8 @@ pub const FetchFn = *const fn (url: []const u8, key: []const u8, body: []const u
 pub const Deps = struct {
     fetch: ?FetchFn = null,
     env: ?*const std.process.Environ.Map = null,
+    /// A key saved on the settings page, used when the environment has none.
+    stored: ?*const fn (provider: []const u8) ?[]const u8 = null,
 };
 
 pub const SelectProfileOpts = struct {
@@ -140,7 +142,8 @@ pub fn selectProfile(input: SelectProfileOpts, deps: Deps) !*Obj {
     var r: Result = .{ .provider = provider, .kind = kind, .start = start, .metadata = json.object(.{.{ "input_truncated", truncated }}) };
 
     const env = deps.env orelse rt.env;
-    const key = env.get(if (rt.eql(provider, "openai")) "OPENAI_API_KEY" else "TYPESAFE_API_KEY");
+    const from_env = env.get(if (rt.eql(provider, "openai")) "OPENAI_API_KEY" else "TYPESAFE_API_KEY");
+    const key = if (from_env != null and rt.trim(from_env.?).len > 0) from_env else if (deps.stored) |f| f(provider) else null;
     if (key == null or rt.trim(key.?).len == 0) return r.done("fallback", "missing_credentials", null);
 
     const profile_names = kind.obj("profiles").?.keys();
@@ -340,6 +343,14 @@ test "routing validation and selection" {
     const base: SelectProfileOpts = .{ .config = cfg, .kind = "claude", .title = "t", .spec = "s" };
     var sel = try selectProfile(base, .{ .env = &env, .fetch = testFetch("{}") });
     try std.testing.expect(rt.contains(json.stringify(sel.val(), false), "\"reason\":\"missing_credentials\",\"profile\":\"deep\""));
+    // A key saved on the settings page stands in for a missing environment variable.
+    const saved = struct {
+        fn f(provider: []const u8) ?[]const u8 {
+            return if (rt.eql(provider, "openai")) "saved" else null;
+        }
+    }.f;
+    sel = try selectProfile(base, .{ .env = &env, .stored = saved, .fetch = testFetch("{\"answers\":[{\"name\":\"profile\",\"type\":\"choice\",\"choice\":\"quick\",\"confidence\":0.9}]}") });
+    try std.testing.expectEqualStrings("selected", sel.obj("routing").?.str("reason").?);
     try env.put("OPENAI_API_KEY", "k");
     sel = try selectProfile(base, .{ .env = &env, .fetch = testFetch("{\"id\":\"req-1\",\"answers\":[{\"name\":\"profile\",\"type\":\"choice\",\"choice\":\"quick\",\"confidence\":0.9}]}") });
     const text_ = json.stringify(sel.obj("routing").?.val(), false);

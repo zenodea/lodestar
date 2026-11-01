@@ -418,7 +418,7 @@ fn resolveStartRuntime(o: *const StartOptions, task: Task, dispatch_id: []const 
         .spec = task.str("spec") orelse "",
         .explicitModel = o.model != null,
         .nativeOverride = has_model or has_thinking,
-    }, .{});
+    }, .{ .stored = @import("../core/keys.zig").stored });
     const profile = selected.obj("profile");
     const model = o.model orelse (if (profile) |p| p.str("model") else null) orelse o.defaultModel;
     const explicit_model_thinking = modelFromArgs(o.kind, modelArgs(o.kind, o.model, null)).thinking;
