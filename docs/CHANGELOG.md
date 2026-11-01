@@ -10,7 +10,8 @@
   "session" column. Plan limits are per account, so other use of the account meanwhile
   counts too.
   Claude Code's plan limits come from the same server as its `/usage` screen, using
-  Claude Code's own login, so they show without any setup. The pane keeps a margin and
+  Claude Code's own login, so they show without any setup. Codex's come the same way, from the
+  server behind its `/status` with its ChatGPT login, so use outside this machine's Codex shows too. The pane keeps a margin and
   gaps when there is room and gives them up when it is short. The sidebar opens it and it
   closes with the sidebar. `lodestar usage --watch` shows the same anywhere; `lodestar
   usage` prints it as JSON.

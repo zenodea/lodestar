@@ -2,7 +2,8 @@
 //! since the last scan. `<state_dir>/usage/cache.json` remembers how far each log was read and hourly totals;
 //! `summary.json` is the small file the sidebar shows. Claude Code's plan limits arrive separately, as
 //! `claude-limits.json`: from the server behind Claude Code's `/usage` (claude_plan.zig), or through
-//! `lodestar __usage-statusline`.
+//! `lodestar __usage-statusline`. Codex's arrive in its session logs and, for use elsewhere, as `codex-limits.json`
+//! from the server behind its `/status` (codex_plan.zig).
 
 const std = @import("std");
 const rt = @import("../rt.zig");
@@ -12,6 +13,7 @@ const paths = @import("../core/paths.zig");
 const prices = @import("prices.zig");
 const record = @import("record.zig");
 const claude_plan = @import("claude_plan.zig");
+const codex_plan = @import("codex_plan.zig");
 
 const Obj = json.Obj;
 const Record = record.Record;
@@ -229,6 +231,8 @@ pub fn refresh(now: i64) bool {
     c.save(listed.items);
     const plan = claude_plan.fetch(now, limitsFile("claude"));
     if (plan.len > 0) fs.writeAtomic(limitsFile("claude"), json.stringifyObj(limitsObj(now, null, plan), false), 0o600) catch {};
+    const codex = codex_plan.fetch(now, limitsFile("codex"));
+    if (codex.windows.len > 0) fs.writeAtomic(limitsFile("codex"), json.stringifyObj(limitsObj(now, codex.plan, codex.windows), false), 0o600) catch {};
     fs.writeAtomic(summaryFile(), json.stringifyObj(summarize(c.root, now), false), 0o600) catch {};
     return true;
 }
