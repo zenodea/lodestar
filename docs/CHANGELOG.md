@@ -22,9 +22,13 @@
   `config set` command for it; Enter moves into them (`j`/`k`, Enter picks, `/` searches, `h` goes back). New rows: **Routing** (model routing's provider), **Router key** (the provider's API key, typed
   without showing and saved to `keys.json`, readable only by you; the environment variable still wins), **Usage pane**
   (`config set --usage-pane on|off`), **Sidebar side**, **Crewmate bar**, **Retry limit**
-  and **Accent**. With routing on and profiles for the harness, Model and Effort grey out and list the
+  and **Accent**. With routing on, Model and Effort grey out and list the
   profiles the router picks from. The accent follows herdr's under herdr and the terminal's palette elsewhere,
   so it matches the terminal's theme.
+- **Model routing works without writing profiles**: for a harness with none configured, the
+  router picks one of four built-in tiers, each on the newest model of its family: quick
+  (haiku / luna, low), standard (sonnet / terra, medium), deep (opus / sol, high) and ultra
+  (fable / astra, xhigh). Claude Code's model list now has `fable` too.
 - **Rex** works as a multiplexer next to herdr and tmux: inside a Rex terminal Lodestar
   uses Rex (or set `LODESTAR_MUX=rex`). The skill now accepts herdr, tmux or Rex.
 - On Rex, agent status comes from Rex itself: Claude Code, Codex and fx report it to Rex,

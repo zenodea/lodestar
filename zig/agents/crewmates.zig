@@ -402,6 +402,16 @@ fn runtimeTx(c: *const RuntimeCtx, s: State) !void {
     d.put("routing", c.routing);
 }
 
+/// Lodestar's tiers for the harness, when routing is on: only then is its model list worth reading.
+fn builtinTiers(o: *const StartOptions) ?*json.Obj {
+    const provider = o.router orelse (if (o.routing) |r| r.str("provider") else null) orelse "off";
+    if (rt.eql(provider, "off")) return null;
+    const settings_ui = @import("../ui/settings.zig");
+    var ids: std.ArrayListUnmanaged([]const u8) = .empty;
+    if (!rt.eql(o.kind, "claude")) for (settings_ui.modelsFor(o.kind)) |m| ids.append(rt.a, m.value) catch {};
+    return @import("../core/tiers.zig").profilesFor(o.kind, ids.items);
+}
+
 fn resolveStartRuntime(o: *const StartOptions, task: Task, dispatch_id: []const u8) !Selection {
     const native = modelFromArgs(o.kind, o.extraArgs);
     var has_model = native.model != null;
@@ -418,6 +428,7 @@ fn resolveStartRuntime(o: *const StartOptions, task: Task, dispatch_id: []const 
         .spec = task.str("spec") orelse "",
         .explicitModel = o.model != null,
         .nativeOverride = has_model or has_thinking,
+        .builtin = builtinTiers(o),
     }, .{ .stored = @import("../core/keys.zig").stored });
     const profile = selected.obj("profile");
     const model = o.model orelse (if (profile) |p| p.str("model") else null) orelse o.defaultModel;

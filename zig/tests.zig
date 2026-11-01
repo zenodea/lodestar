@@ -64,6 +64,7 @@ test {
     std.testing.refAllDecls(@import("usage/claude.zig"));
     std.testing.refAllDecls(@import("usage/claude_plan.zig"));
     std.testing.refAllDecls(@import("usage/codex_plan.zig"));
+    std.testing.refAllDecls(@import("core/tiers.zig"));
     std.testing.refAllDecls(@import("usage/run_mark.zig"));
     std.testing.refAllDecls(@import("usage/codex.zig"));
     std.testing.refAllDecls(@import("usage/pi.zig"));
