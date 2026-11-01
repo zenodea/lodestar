@@ -101,7 +101,7 @@ fn keptModels(file: []const u8) ?[]const PickItem {
 }
 
 fn listModels(kind: []const u8) []const PickItem {
-    if (rt.eql(kind, "claude")) return &.{ .{ .value = "opus" }, .{ .value = "sonnet" }, .{ .value = "haiku" } };
+    if (rt.eql(kind, "claude")) return &.{ .{ .value = "fable" }, .{ .value = "opus" }, .{ .value = "sonnet" }, .{ .value = "haiku" } };
     if (rt.eql(kind, "fx")) return fxModels();
     const models = piModels();
     var out: std.ArrayListUnmanaged(PickItem) = .empty;
@@ -330,16 +330,27 @@ fn sRouter(c: Config) []const u8 {
 fn vRouting(c: Config) []const u8 {
     const p = sRouter(c);
     if (rt.eql(p, "off")) return "off";
-    const kinds = (c.obj("routing") orelse return p).obj("kinds");
-    if (kinds == null or kinds.?.obj(kindOf(c)) == null) return rt.concat(&.{ p, " (no profiles for ", kindOf(c), ")" });
+    if (routedProfiles(c) == null) return rt.concat(&.{ p, " (no models listed for ", kindOf(c), ")" });
     return p;
 }
 /// The routing profiles for the current harness when routing is on: the model and effort come from one of them.
+/// Yours from the routing configuration, else Lodestar's tiers on the harness's newest models.
 fn routedProfiles(c: Config) ?*Obj {
     if (rt.eql(sRouter(c), "off")) return null;
-    const kind = ((c.obj("routing") orelse return null).obj("kinds") orelse return null).obj(kindOf(c)) orelse return null;
+    const configured = if (c.obj("routing")) |r| if (r.obj("kinds")) |k| k.obj(kindOf(c)) else null else null;
+    const kind = configured orelse builtinTiers(kindOf(c)) orelse return null;
     const profiles = kind.obj("profiles") orelse return null;
     return if (profiles.count() > 0) profiles else null;
+}
+
+fn builtinTiers(kind: []const u8) ?*Obj {
+    var ids: std.ArrayListUnmanaged([]const u8) = .empty;
+    if (!rt.eql(kind, "claude")) {
+        kept_models_only = true;
+        defer kept_models_only = false;
+        for (modelsFor(kind)) |m| ids.append(rt.a, m.value) catch {};
+    }
+    return @import("../core/tiers.zig").profilesFor(kind, ids.items);
 }
 fn routed(c: Config) bool {
     return routedProfiles(c) != null;
@@ -354,10 +365,12 @@ fn vEffortRouted(c: Config) []const u8 {
 /// The profiles the router picks from, as `name  model · effort`.
 fn profileItems(profiles: *Obj) []const PickItem {
     var out: std.ArrayListUnmanaged(PickItem) = .empty;
+    var width: usize = 0;
+    for (profiles.keys()) |name| width = @max(width, ansi.width(name));
     for (profiles.keys()) |name| {
         const p = profiles.obj(name) orelse continue;
         const model = p.str("model") orelse "?";
-        const label = if (p.str("thinking")) |t| rt.concat(&.{ name, "  ", ansi.dim(rt.concat(&.{ model, " · ", t })) }) else rt.concat(&.{ name, "  ", ansi.dim(model) });
+        const label = rt.concat(&.{ ansi.pad(name, width + 2), ansi.dim(if (p.str("thinking")) |t| rt.concat(&.{ model, " · ", t }) else model) });
         out.append(rt.a, .{ .value = name, .label = label }) catch {};
     }
     return out.items;
@@ -999,8 +1012,13 @@ test "with routing on and profiles for the harness, model and effort are the rou
     try std.testing.expect(ch.decided);
     try std.testing.expectEqual(@as(usize, 2), ch.items.len);
     try std.testing.expectEqualStrings("a  m1 · low", ansi.stripSgr(ch.items[0].label.?));
-    // Another harness has no profiles: its own model and effort apply.
+    // A harness without profiles of its own gets Lodestar's tiers; Claude Code's need no model list.
     c.putStr("kind", "claude");
+    const tiers = choicesOf(SETTINGS_ROWS[1], c);
+    try std.testing.expectEqual(@as(usize, 4), tiers.items.len);
+    try std.testing.expectEqualStrings("ultra     fable · xhigh", ansi.stripSgr(tiers.items[3].label.?));
+    // With routing off, the model and effort are the harness's own again.
+    c.obj("routing").?.putStr("provider", "off");
     try std.testing.expect(!routed(c));
     try std.testing.expectEqualStrings("harness default", vModelRouted(c));
 }

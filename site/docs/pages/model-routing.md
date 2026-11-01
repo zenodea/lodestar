@@ -8,9 +8,29 @@ The router chooses a **model and optional effort**, not a harness. Your selected
 harness (`--kind`, then the configured default) stays in control. Existing crewmate
 sessions are never rerouted by `crewmate prompt`, adoption, or follow-ups.
 
+## Built-in tiers
+
+Turn routing on and it works with no profiles to write: for a harness your
+configuration has no profiles for, the router picks one of Lodestar's four tiers,
+each on the newest model of its family:
+
+| Tier | For | Claude Code | Codex, fx, pi | Effort |
+| --- | --- | --- | --- | --- |
+| quick | Small, well-specified changes: renames, docs, config values, simple tests | haiku | luna | low |
+| standard | Ordinary features and bug fixes with a clear scope | sonnet | terra | medium |
+| deep | Unclear failures, changes across modules, concurrency, performance, open-ended tasks | opus | sol | high |
+| ultra | Architecture and large redesigns, subtle correctness or security problems, work others have failed at | fable | astra | xhigh |
+
+Claude Code gets the family's alias, which always means its newest model. Codex,
+fx and pi get the highest version of the family in their model list (for example
+`gpt-6.1-sol` over `gpt-6-sol`); a tier whose family the harness doesn't list is
+left out. When the router is unsure or can't be reached, the crewmate gets
+**deep**. The settings page lists the tiers under Model and Effort, which grey out
+while routing picks them.
+
 ## Configure approved profiles
 
-Create a routing configuration file. This example is for pi; replace the model
+To use your own profiles instead, create a routing configuration file. This example is for pi; replace the model
 IDs and effort levels with values accepted by your installed harness. Use
 `pi --list-models` to inspect pi's available IDs.
 
@@ -58,8 +78,9 @@ match `[A-Za-z0-9][A-Za-z0-9_.-]{0,63}`. Model IDs, descriptions, and effort nam
 are nonempty, single-line strings, bounded to 256, 2048, and 64 UTF-8 bytes
 respectively.
 
-If the selected harness has no routing profiles, the crewmate keeps its ordinary
-model/effort defaults and no decision request is sent.
+If the selected harness has no routing profiles of yours, the built-in tiers are
+used. Only when none of them has a model on that harness does the crewmate keep its
+ordinary model/effort defaults, with no decision request sent.
 
 ## Select a provider
 

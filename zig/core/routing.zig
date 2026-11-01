@@ -124,6 +124,8 @@ pub const SelectProfileOpts = struct {
     spec: []const u8,
     explicitModel: bool = false,
     nativeOverride: bool = false,
+    /// Profiles to use when the configuration has none for `kind`: Lodestar's tiers (tiers.zig).
+    builtin: ?*Obj = null,
 };
 
 /// `{ profile?, routing }`.
@@ -134,7 +136,7 @@ pub fn selectProfile(input: SelectProfileOpts, deps: Deps) !*Obj {
     if (input.explicitModel) return bypass(provider, "explicit_model");
     if (input.nativeOverride) return bypass(provider, "native_override");
     if (rt.eql(provider, "off")) return bypass(provider, "disabled");
-    const kind = (if (config) |c| (if (c.obj("kinds")) |k| k.obj(input.kind) else null) else null) orelse return bypass(provider, "kind_unconfigured");
+    const kind = (if (config) |c| (if (c.obj("kinds")) |k| k.obj(input.kind) else null) else null) orelse input.builtin orelse return bypass(provider, "kind_unconfigured");
 
     const full = rt.concat(&.{ input.title, "\n\n", input.spec });
     const truncated = full.len > ROUTING_INPUT_BYTES;
@@ -351,6 +353,12 @@ test "routing validation and selection" {
     }.f;
     sel = try selectProfile(base, .{ .env = &env, .stored = saved, .fetch = testFetch("{\"answers\":[{\"name\":\"profile\",\"type\":\"choice\",\"choice\":\"quick\",\"confidence\":0.9}]}") });
     try std.testing.expectEqualStrings("selected", sel.obj("routing").?.str("reason").?);
+    // A harness the configuration has no profiles for routes over the tiers it is handed.
+    const tiers = @import("tiers.zig").profilesFor("claude", &.{}).?;
+    sel = try selectProfile(.{ .config = cfg, .kind = "codex", .title = "t", .spec = "s", .builtin = tiers }, .{ .env = &env, .stored = saved, .fetch = testFetch("{\"answers\":[{\"name\":\"profile\",\"type\":\"choice\",\"choice\":\"ultra\",\"confidence\":0.95}]}") });
+    try std.testing.expectEqualStrings("fable", sel.obj("profile").?.str("model").?);
+    sel = try selectProfile(.{ .config = cfg, .kind = "codex", .title = "t", .spec = "s" }, .{ .env = &env, .stored = saved });
+    try std.testing.expectEqualStrings("kind_unconfigured", sel.obj("routing").?.str("reason").?);
     try env.put("OPENAI_API_KEY", "k");
     sel = try selectProfile(base, .{ .env = &env, .fetch = testFetch("{\"id\":\"req-1\",\"answers\":[{\"name\":\"profile\",\"type\":\"choice\",\"choice\":\"quick\",\"confidence\":0.9}]}") });
     const text_ = json.stringify(sel.obj("routing").?.val(), false);
