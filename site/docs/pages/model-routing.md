@@ -78,7 +78,8 @@ OpenAI currently documents Decisions as a public beta.
 
 ### TypeSafe Jev
 
-Make `TYPESAFE_API_KEY` available in the leader's environment, then select Jev:
+Select Jev, then give it TypeSafe's key: on the settings page (`lodestar settings`, the **Router key** row), or as
+`TYPESAFE_API_KEY` in the leader's environment.
 
 ```bash
 lodestar config set --router jev
@@ -88,8 +89,10 @@ The adapter uses `POST https://api.typesafe.ai/v1/systemone` with decision model
 `jev-latest`. Use TypeSafe's official API; similarly named third-party Jev sites
 are not interchangeable API endpoints.
 
-Keys are read from the leader's environment, not saved in Lodestar's
-configuration or copied into remote crewmate launch arguments. Do not put keys in
+A key typed on the settings page is saved to `keys.json` next to Lodestar's
+configuration, readable only by you, and shown there only by its last four
+characters. The environment variable wins over it. Keys are never saved in
+`config.json` or copied into remote crewmate launch arguments. Do not put keys in
 task specs or profile descriptions.
 
 ## Start and override

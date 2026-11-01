@@ -15,6 +15,7 @@ It opens in your terminal and covers:
 | Harness | Which agent new crewmates run: Claude Code, Codex, pi or fx | Claude Code |
 | Model and effort | The model and thinking level for each harness | The harness's own default |
 | Routing | Let OpenAI Decisions or TypeSafe Jev pick each crewmate's model from profiles you approve. See [Model routing](?p=model-routing) | Off |
+| Router key | The routing provider's API key, typed or pasted without showing it and saved to `keys.json` (readable only by you). `OPENAI_API_KEY` or `TYPESAFE_API_KEY` still wins | Not set |
 | Placement | Crewmates in hidden tabs, split beside the leader, or (Rex) in no tab at all | Hidden tabs |
 | Popup (Rex) | `p` in the crew pane opens the selected crewmate in a window floating over your tab | On |
 | Worktrees | Always give crewmates a worktree, never, or let the leader decide | Leader decides |

@@ -50,7 +50,7 @@ Only read when [model routing](?p=model-routing) is turned on.
 | Variable | What it does |
 | --- | --- |
 | `OPENAI_API_KEY` | Key for the `openai` router. |
-| `TYPESAFE_API_KEY` | Key for the `jev` router. |
+| `TYPESAFE_API_KEY` | Key for the `jev` router. Wins over a key saved on the settings page. |
 
 ## Set by Lodestar
 
