@@ -36,11 +36,10 @@ Keys:
 | --- | --- |
 | `j` / `k` (or ↓ / ↑, `ctrl-j` / `ctrl-k`) | Move down or up |
 | `g` / `G` | First or last setting |
-| `l` / `h` (or → / ←, `ctrl-l` / `ctrl-h`) | Step the value on or back; flips an on/off setting |
 | Enter or Space | Move into the setting's choices on the right (the full list on a narrow pane); flips an on/off setting |
 | `q` or Esc | Close |
 
-On a wide pane, the selected setting's choices show to the right of the rows, with the current one marked and the `lodestar config set` command that sets it. `h` / `l` move the mark. Enter moves into those choices and greys the setting out: `j` / `k` move, Enter or `l` picks, `/` opens the full list to search or type a value, and `h` or Esc goes back.
+On a wide pane, the selected setting's choices show to the right of the rows, with the current one marked and the `lodestar config set` command that sets it. Enter moves into those choices and greys the setting out: `j` / `k` move, Enter picks, `/` opens the full list to search or type a value, and `h` or Esc goes back.
 
 In the full list, letters search, so the keys take ctrl: `ctrl-j` / `ctrl-k` move (as do `ctrl-n` / `ctrl-p` and the arrows), `ctrl-l` picks and `ctrl-h` backs out.
 

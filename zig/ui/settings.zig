@@ -635,7 +635,7 @@ fn choicesPanel(row: SettingsRow, c: Config, height: usize, accent: ansi.Paint, 
 /// The panel needs this many columns to be worth drawing.
 const PANEL_MIN: usize = 18;
 
-const KEYS = [_][2][]const u8{ .{ "j/k", "move" }, .{ "h/l", "change" }, .{ "enter", "pick" }, .{ "q", "close" } };
+const KEYS = [_][2][]const u8{ .{ "j/k", "move" }, .{ "enter", "change" }, .{ "q", "close" } };
 /// The keys while the choices beside the rows have them.
 const LIST_KEYS = [_][2][]const u8{ .{ "j/k", "move" }, .{ "enter", "pick" }, .{ "/", "search" }, .{ "h", "back" } };
 
@@ -730,20 +730,6 @@ fn askNested(o: PickOptions) anyerror!?[]const u8 {
     return v;
 }
 
-/// Which way h and l step a row's value: the next or previous item of the list `enter` would show, without showing it.
-var cycle_by: i64 = 1;
-
-fn askCycle(o: PickOptions) anyerror!?[]const u8 {
-    if (o.items.len == 0) return null;
-    const n: i64 = @intCast(o.items.len);
-    var at: i64 = if (cycle_by > 0) -1 else 0;
-    if (o.current) |cur| for (o.items, 0..) |it, i| if (rt.eql(it.value, cur)) {
-        at = @intCast(i);
-        break;
-    };
-    return o.items[@intCast(@mod(at + cycle_by, n))].value;
-}
-
 /// The value picked from the choices beside the rows, handed to the row's change function as its answer.
 var chosen: []const u8 = "";
 
@@ -772,9 +758,9 @@ fn isKey(key: term.Key, ch: []const u8) bool {
 }
 
 /// The interactive settings page; returns the (saved) configuration when closed. Vim keys: j/k move, g/G jump to the
-/// first or last row, h/l step the value back or on, enter (or space) flips a toggle or moves into the row's choices
-/// beside it (the full list when the pane is too narrow for them). There j/k move, enter or l picks, / opens the full
-/// list to search or type a value, and h or esc goes back to the rows.
+/// first or last row; enter (or space) is the only way to change a value: it flips a toggle or moves into the row's
+/// choices beside it (the full list when the pane is too narrow for them). There j/k move, enter picks, / opens the
+/// full list to search or type a value, and h or esc goes back to the rows.
 pub fn runSettings() !Config {
     if (!term.isTty(0) or !term.isTty(1)) return rt.fail(null, "lodestar settings needs a terminal", .{});
     const c = try config.loadConfig();
@@ -819,7 +805,7 @@ pub fn runSettings() !Config {
                     list = 0;
                 } else if (isKey(key, "G") or rt.eql(name, "end")) {
                     list = m - 1;
-                } else if (enter or isKey(key, "l") or rt.eql(name, "right") or chord == 'l') {
+                } else if (enter) {
                     chosen = list_items[at].value;
                     ask = askChosen;
                     list = null;
@@ -833,12 +819,6 @@ pub fn runSettings() !Config {
                 sel = (sel + n - 1) % n;
             } else if (chord == 'j') {
                 sel = (sel + 1) % n;
-            } else if (chord == 'l') {
-                cycle_by = 1;
-                ask = askCycle;
-            } else if (chord == 'h') {
-                cycle_by = -1;
-                ask = askCycle;
             } else if (rt.eql(name, "up") or isKey(key, "k") or (key.ctrl and rt.eql(name, "p"))) {
                 sel = (sel + n - 1) % n;
             } else if (rt.eql(name, "down") or isKey(key, "j") or (key.ctrl and rt.eql(name, "n"))) {
@@ -847,12 +827,6 @@ pub fn runSettings() !Config {
                 sel = 0;
             } else if (isKey(key, "G") or rt.eql(name, "end")) {
                 sel = n - 1;
-            } else if (isKey(key, "l") or rt.eql(name, "right")) {
-                cycle_by = 1;
-                ask = askCycle;
-            } else if (isKey(key, "h") or rt.eql(name, "left")) {
-                cycle_by = -1;
-                ask = askCycle;
             } else if (enter) {
                 const ch = if (panel_drawn) choicesOf(shown[sel], c) else null;
                 if (ch == null or ch.?.toggle or ch.?.items.len == 0) {
@@ -895,7 +869,7 @@ test "the settings page shows the popup row and no-tabs placement only where the
     try std.testing.expectEqualStrings("on", vPopup(c));
 }
 
-test "h and l step through a row's values, and a short page scrolls to the selected row" {
+test "picking sets a row's value, and a short page scrolls to the selected row" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var map = std.process.Environ.Map.init(arena.allocator());
@@ -903,16 +877,13 @@ test "h and l step through a row's values, and a short page scrolls to the selec
     defer mux.useMux(null);
     mux.useMux(&@import("../mux/rex.zig").backend);
     const c = json.newObj();
-    cycle_by = 1;
-    try cPlacement(c, askCycle);
-    try std.testing.expectEqualStrings("split", sPlacement(c));
-    cycle_by = -1;
-    try cPlacement(c, askCycle);
-    try cPlacement(c, askCycle);
+    chosen = "background";
+    try cPlacement(c, askChosen);
     try std.testing.expectEqualStrings("background", sPlacement(c));
-    try cRouting(c, askCycle);
+    chosen = "jev";
+    try cRouting(c, askChosen);
     try std.testing.expectEqualStrings("jev", sRouter(c));
-    try cUsagePane(c, askCycle);
+    try cUsagePane(c, askChosen);
     try std.testing.expectEqualStrings("off", vUsagePane(c));
     const last = visibleRows().len - 1;
     const page = renderSettings(c, last, null, 50, 16, "", .{});
@@ -920,7 +891,7 @@ test "h and l step through a row's values, and a short page scrolls to the selec
     var found = false;
     for (page) |l| found = found or std.mem.indexOf(u8, ansi.stripSgr(l), "❯ Accent") != null;
     try std.testing.expect(found);
-    try std.testing.expectEqualStrings("  j/k move   h/l change   enter pick   q close", ansi.stripSgr(page[15]));
+    try std.testing.expectEqualStrings("  j/k move   enter change   q close", ansi.stripSgr(page[15]));
 }
 
 test "a wide page lists the selected row's choices beside it, with the command that sets the current one" {

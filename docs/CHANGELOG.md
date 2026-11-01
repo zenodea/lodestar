@@ -15,8 +15,8 @@
   gaps when there is room and gives them up when it is short. The sidebar opens it and it
   closes with the sidebar. `lodestar usage --watch` shows the same anywhere; `lodestar
   usage` prints it as JSON.
-- The **settings page** moves with vim keys: `j`/`k`, `g`/`G`, and `h`/`l` to step a value
-  without opening its list. In a list, `ctrl-j`/`ctrl-k` move, `ctrl-l` picks and `ctrl-h`
+- The **settings page** moves with vim keys (`j`/`k`, `g`/`G`); Enter is the one way to change a
+  value. In a list, `ctrl-j`/`ctrl-k` move, `ctrl-l` picks and `ctrl-h`
   backs out; `ctrl-j` used to pick, since terminals send it as a newline. On/off settings show as a dot, the page keeps a margin, and
   long pages scroll. On a wide pane the selected row's choices show beside it, with the current one marked and the
   `config set` command for it; Enter moves into them (`j`/`k`, Enter picks, `/` searches, `h` goes back). New rows: **Routing** (model routing's provider), **Router key** (the provider's API key, typed
