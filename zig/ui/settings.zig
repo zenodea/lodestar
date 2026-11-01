@@ -679,15 +679,39 @@ fn choicesPanel(row: SettingsRow, c: Config, height: usize, accent: ansi.Paint, 
 
 /// The panel needs this many columns to be worth drawing.
 const PANEL_MIN: usize = 18;
+/// Between columns of rows, on a pane too short for one.
+const COLUMN_GAP: usize = 4;
 
 const KEYS = [_][2][]const u8{ .{ "j/k", "move" }, .{ "enter", "change" }, .{ "q", "close" } };
 /// The keys while the choices beside the rows have them.
 const LIST_KEYS = [_][2][]const u8{ .{ "j/k", "move" }, .{ "enter", "pick" }, .{ "/", "search" }, .{ "h", "back" } };
 
+/// The rows' lines split into columns of at most `room`, as `[start, end)`. A column ends before a section's name
+/// in its lower half, or else not on a section's name.
+fn flowColumns(is_section: []const bool, room: usize) []const [2]usize {
+    var out: std.ArrayListUnmanaged([2]usize) = .empty;
+    if (is_section.len <= room or room == 0) {
+        out.append(rt.a, .{ 0, is_section.len }) catch {};
+        return out.items;
+    }
+    var i: usize = 0;
+    while (i < is_section.len) {
+        var e = @min(is_section.len, i + room);
+        if (e < is_section.len) {
+            var k = e;
+            while (k > i + room / 2 and !is_section[k]) k -= 1;
+            if (is_section[k] and k > i) e = k else if (is_section[e - 1] and e - 1 > i) e -= 1;
+        }
+        out.append(rt.a, .{ i, e }) catch {};
+        i = e;
+    }
+    return out.items;
+}
+
 /// Whether the last page drawn had the choices beside the rows; without them, `enter` opens the full list.
 var panel_drawn = false;
 
-/// The page: a margin, rows by section with values in one column, and the keys at the bottom. When the rows don't fit, they scroll to keep the selected one in view.
+/// The page: a margin, rows by section with values in one column, and the keys at the bottom, fitted to the pane's height.
 /// With `list`, the choices beside the rows have the keys, the cursor on item `list`, and the selected row is greyed.
 pub fn renderSettings(c: Config, sel: usize, list: ?usize, cols: usize, rows: usize, notice: []const u8, accent: ansi.Paint) []const []const u8 {
     const shown = visibleRows();
@@ -697,8 +721,9 @@ pub fn renderSettings(c: Config, sel: usize, list: ?usize, cols: usize, rows: us
     for (shown) |r| label_width = @max(label_width, r.label.len);
     label_width += 4;
 
-    // Roomy: gaps between sections and around the keys. A pane too short for that (a popup drawn before the app has
-    // sized it is 24 rows) drops them first, so every setting still shows; the margin around the title always stays.
+    // The page fits the pane instead of scrolling. As the pane gets shorter it drops space: first the gaps between
+    // sections and around the keys, then the gap under the title, then the margin above it. Shorter still, the rows
+    // flow into columns side by side; only a pane too narrow for those scrolls, keeping the selected row in view.
     var sections: usize = 0;
     var last: []const u8 = "";
     for (shown) |r| if (!rt.eql(r.section, last)) {
@@ -706,17 +731,25 @@ pub fn renderSettings(c: Config, sel: usize, list: ?usize, cols: usize, rows: us
         sections += 1;
     };
     const extra: usize = if (notice.len > 0) 2 else 0;
-    const roomy = rows >= 3 + shown.len + 2 * sections - 1 + extra + 3;
+    // The rows, their section names, the notice and the keys, with no space between them.
+    const lines = shown.len + sections + extra + 1;
+    const roomy = rows >= lines + sections + 4;
+    var head_len: usize = if (rows >= lines + 3) 3 else if (rows >= lines + 2) 2 else if (rows >= lines + 1) 1 else 3;
 
     var body: std.ArrayListUnmanaged([]const u8) = .empty;
+    var is_section: std.ArrayListUnmanaged(bool) = .empty;
     var sel_line: usize = 0;
     var section: []const u8 = "";
     var value_width: usize = 0;
     for (shown, 0..) |row, i| {
         if (!rt.eql(row.section, section)) {
             section = row.section;
-            if (body.items.len > 0 and roomy) body.append(rt.a, "") catch {};
+            if (body.items.len > 0 and roomy) {
+                body.append(rt.a, "") catch {};
+                is_section.append(rt.a, false) catch {};
+            }
             body.append(rt.a, ansi.dim(std.ascii.allocUpperString(rt.a, section) catch section)) catch {};
+            is_section.append(rt.a, true) catch {};
         }
         if (i == sel) sel_line = body.items.len;
         const value = row.value(c);
@@ -730,6 +763,7 @@ pub fn renderSettings(c: Config, sel: usize, list: ?usize, cols: usize, rows: us
             rt.concat(&.{ accent.apply("❯ "), accent.apply(ansi.bold(ansi.pad(row.label, label_width))), if (rt.eql(value, "on") or rt.eql(value, "off")) shownValue(value, accent) else accent.apply(value) })
         else
             rt.concat(&.{ "  ", ansi.pad(row.label, label_width), shownValue(value, accent) })) catch {};
+        is_section.append(rt.a, false) catch {};
     }
 
     var foot: std.ArrayListUnmanaged([]const u8) = .empty;
@@ -738,32 +772,52 @@ pub fn renderSettings(c: Config, sel: usize, list: ?usize, cols: usize, rows: us
     for (if (list != null) LIST_KEYS[0..] else KEYS[0..]) |k| keys.append(rt.a, rt.concat(&.{ k[0], " ", ansi.dim(k[1]) })) catch {};
     const hint = std.mem.join(rt.a, ansi.dim("   "), keys.items) catch "";
 
-    // Top margin, title, gap; then the rows; then the footer and the keys on the last line.
-    const head = [_][]const u8{ "", ansi.bold("Lodestar settings"), "" };
-    const room: usize = rows -| (head.len + foot.items.len + @as(usize, if (roomy) 3 else 1));
-    const start: usize = if (body.items.len <= room or room == 0) 0 else @min(sel_line -| room / 2, body.items.len - room);
-    const end = @min(body.items.len, start + @max(1, room));
+    // The title; then the rows, in as many columns as they need; then the footer and the keys on the last line.
+    // Columns that don't fit across under the title with its margins may fit with the title alone.
+    const col_w = 2 + label_width + value_width;
+    var columns: []const [2]usize = &.{};
+    var room: usize = 0;
+    for ([_]usize{ head_len, 1 }) |h| {
+        head_len = h;
+        room = rows -| (h + foot.items.len + @as(usize, if (roomy) 3 else 1));
+        columns = flowColumns(is_section.items, room);
+        if (columns.len * (col_w + COLUMN_GAP) - COLUMN_GAP <= w) break;
+    } else {
+        const start = @min(sel_line -| room / 2, body.items.len - room);
+        columns = rt.a.dupe([2]usize, &.{.{ start, start + room }}) catch &.{};
+    }
+    const title = [_][]const u8{ "", ansi.bold("Lodestar settings"), "" };
+    const head = title[if (head_len == 1) 1 else 0..][0..head_len];
+    var body_h: usize = 0;
+    for (columns) |r| body_h = @max(body_h, r[1] - r[0]);
 
     var out: std.ArrayListUnmanaged([]const u8) = .empty;
     for (head) |l| out.append(rt.a, l) catch {};
-    for (body.items[start..end]) |l| out.append(rt.a, l) catch {};
+    for (0..body_h) |r| {
+        var line: []const u8 = "";
+        for (columns, 0..) |col, k| {
+            const l = if (col[0] + r < col[1]) body.items[col[0] + r] else "";
+            line = if (k == 0) l else rt.concat(&.{ ansi.pad(line, k * (col_w + COLUMN_GAP)), l });
+        }
+        out.append(rt.a, line) catch {};
+    }
     for (foot.items) |l| out.append(rt.a, l) catch {};
     while (out.items.len + @as(usize, if (roomy) 2 else 1) < rows) out.append(rt.a, "") catch {};
     out.append(rt.a, hint) catch {};
     if (roomy) out.append(rt.a, "") catch {};
 
     // The selected row's choices to the right of the rows, past a rule, from the first section down to the keys.
-    const left_w = 2 + label_width + value_width;
+    const left_w = columns.len * (col_w + COLUMN_GAP) - COLUMN_GAP;
     const hint_at = out.items.len - @as(usize, if (roomy) 2 else 1);
     const region_end = @min(hint_at -| @as(usize, if (roomy) 1 else 0), rows);
     panel_drawn = sel < shown.len and w >= left_w + 6 + PANEL_MIN and region_end > head.len;
     if (panel_drawn) {
-        const lines = choicesPanel(shown[sel], c, region_end - head.len, accent, list);
-        const foot_at = head.len + (end - start);
+        const panel = choicesPanel(shown[sel], c, region_end - head.len, accent, list);
+        const foot_at = head.len + body_h;
         for (head.len..region_end) |r| {
             if (r >= foot_at and r < foot_at + foot.items.len) continue;
             const p = r - head.len;
-            out.items[r] = rt.concat(&.{ ansi.pad(out.items[r], left_w), "   ", ansi.dim("│"), "  ", if (p < lines.len) lines[p] else "" });
+            out.items[r] = rt.concat(&.{ ansi.pad(out.items[r], left_w), "   ", ansi.dim("│"), "  ", if (p < panel.len) panel[p] else "" });
         }
     }
     for (out.items) |*l| l.* = if (l.len == 0) "" else rt.concat(&.{ margin, ansi.truncate(l.*, @intCast(w)) });
@@ -944,6 +998,24 @@ test "picking sets a row's value, and a short page scrolls to the selected row" 
     for (page) |l| found = found or std.mem.indexOf(u8, ansi.stripSgr(l), "❯ Accent") != null;
     try std.testing.expect(found);
     try std.testing.expectEqualStrings("  j/k move   enter change   q close", ansi.stripSgr(page[15]));
+}
+
+test "a short pane drops the spacing, then flows the rows into columns, so every row shows" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var map = std.process.Environ.Map.init(arena.allocator());
+    rt.initForTest(arena.allocator(), &map);
+    defer mux.useMux(null);
+    mux.useMux(&@import("../mux/rex.zig").backend);
+    const c = json.newObj();
+    for ([_][2]usize{ .{ 120, 24 }, .{ 120, 14 }, .{ 90, 14 } }) |sz| {
+        const page = renderSettings(c, 0, null, sz[0], sz[1], "", .{});
+        try std.testing.expectEqual(sz[1], page.len);
+        var text: std.ArrayListUnmanaged(u8) = .empty;
+        for (page) |l| try text.appendSlice(rt.a, rt.concat(&.{ ansi.stripSgr(l), "\n" }));
+        for (visibleRows()) |r| try std.testing.expect(std.mem.indexOf(u8, text.items, r.label) != null);
+        try std.testing.expect(std.mem.indexOf(u8, text.items, "Lodestar settings") != null);
+    }
 }
 
 test "a wide page lists the selected row's choices beside it, with the command that sets the current one" {
