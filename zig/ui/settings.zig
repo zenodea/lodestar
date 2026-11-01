@@ -147,6 +147,8 @@ pub const SettingsRow = struct {
     /// The `lodestar config set` flag that sets the row, and the one that clears it back to the harness default.
     flag: []const u8,
     clear: ?[]const u8 = null,
+    /// Whether something else decides the row for now (routing picks the model and effort): greyed, and not changed.
+    decided: ?*const fn (c: Config) bool = null,
 };
 
 const HARNESS_DEFAULT: PickItem = .{ .value = "", .label = "harness default", .description = "pass nothing; the harness picks" };
@@ -332,6 +334,35 @@ fn vRouting(c: Config) []const u8 {
     if (kinds == null or kinds.?.obj(kindOf(c)) == null) return rt.concat(&.{ p, " (no profiles for ", kindOf(c), ")" });
     return p;
 }
+/// The routing profiles for the current harness when routing is on: the model and effort come from one of them.
+fn routedProfiles(c: Config) ?*Obj {
+    if (rt.eql(sRouter(c), "off")) return null;
+    const kind = ((c.obj("routing") orelse return null).obj("kinds") orelse return null).obj(kindOf(c)) orelse return null;
+    const profiles = kind.obj("profiles") orelse return null;
+    return if (profiles.count() > 0) profiles else null;
+}
+fn routed(c: Config) bool {
+    return routedProfiles(c) != null;
+}
+fn vModelRouted(c: Config) []const u8 {
+    return if (routed(c)) rt.concat(&.{ sRouter(c), " picks" }) else modelOrDefault(c);
+}
+fn vEffortRouted(c: Config) []const u8 {
+    return if (routed(c)) rt.concat(&.{ sRouter(c), " picks" }) else thinkingOrDefault(c);
+}
+
+/// The profiles the router picks from, as `name  model · effort`.
+fn profileItems(profiles: *Obj) []const PickItem {
+    var out: std.ArrayListUnmanaged(PickItem) = .empty;
+    for (profiles.keys()) |name| {
+        const p = profiles.obj(name) orelse continue;
+        const model = p.str("model") orelse "?";
+        const label = if (p.str("thinking")) |t| rt.concat(&.{ name, "  ", ansi.dim(rt.concat(&.{ model, " · ", t })) }) else rt.concat(&.{ name, "  ", ansi.dim(model) });
+        out.append(rt.a, .{ .value = name, .label = label }) catch {};
+    }
+    return out.items;
+}
+
 fn cRouting(c: Config, ask: Ask) anyerror!void {
     const items = [_]PickItem{
         .{ .value = "off", .label = "off" },
@@ -472,8 +503,8 @@ fn cRetries(c: Config, ask: Ask) anyerror!void {
 
 pub const SETTINGS_ROWS = [_]SettingsRow{
     .{ .section = "Crew", .label = "Harness", .value = vHarness, .change = cHarness, .flag = "--kind" },
-    .{ .section = "Crew", .label = "Model", .value = modelOrDefault, .change = cModel, .flag = "--model", .clear = "--clear-model" },
-    .{ .section = "Crew", .label = "Effort", .value = thinkingOrDefault, .change = cEffort, .flag = "--thinking", .clear = "--clear-thinking" },
+    .{ .section = "Crew", .label = "Model", .value = vModelRouted, .change = cModel, .flag = "--model", .clear = "--clear-model", .decided = routed },
+    .{ .section = "Crew", .label = "Effort", .value = vEffortRouted, .change = cEffort, .flag = "--thinking", .clear = "--clear-thinking", .decided = routed },
     .{ .section = "Crew", .label = "Routing", .value = vRouting, .change = cRouting, .flag = "--router" },
     .{ .section = "Crew", .label = "Router key", .value = vKey, .change = cKey, .flag = "" },
     .{ .section = "Crew", .label = "Placement", .value = vPlacement, .change = cPlacement, .flag = "--placement" },
@@ -568,11 +599,12 @@ fn askCapture(o: PickOptions) anyerror!?[]const u8 {
     return null;
 }
 
-const Choices = struct { items: []const PickItem, current: []const u8, toggle: bool = false };
+const Choices = struct { items: []const PickItem, current: []const u8, toggle: bool = false, decided: bool = false };
 
 /// What a row can be set to and which it is now: the list `enter` would open, or on and off for a toggle. The row's
 /// own change function asks for the list, on a copy of the configuration so a toggle flips nothing.
 fn choicesOf(row: SettingsRow, c: Config) Choices {
+    if (row.decided) |d| if (d(c)) return .{ .items = profileItems(routedProfiles(c).?), .current = "", .decided = true };
     captured = null;
     kept_models_only = true;
     row.change(c.deepClone(), askCapture) catch {};
@@ -606,9 +638,9 @@ fn accentSwatch(value: []const u8) []const u8 {
 /// or else the current value.
 fn choicesPanel(row: SettingsRow, c: Config, height: usize, accent: ansi.Paint, cursor: ?usize) []const []const u8 {
     const ch = choicesOf(row, c);
-    const cmd = commandFor(row, ch.current);
+    const cmd = if (ch.decided) "" else commandFor(row, ch.current);
     var out: std.ArrayListUnmanaged([]const u8) = .empty;
-    out.appendSlice(rt.a, &.{ ansi.bold(row.label), "" }) catch {};
+    out.appendSlice(rt.a, &.{ if (ch.decided) rt.concat(&.{ ansi.bold(row.label), ansi.dim(rt.concat(&.{ "  ", sRouter(c), " picks a profile per task" })) }) else ansi.bold(row.label), "" }) catch {};
     const room = height -| (out.items.len + @as(usize, if (cmd.len > 0) 2 else 0));
     const n = ch.items.len;
     // An action list (the router key) has no current item.
@@ -676,7 +708,10 @@ pub fn renderSettings(c: Config, sel: usize, list: ?usize, cols: usize, rows: us
         if (i == sel) sel_line = body.items.len;
         const value = row.value(c);
         value_width = @max(value_width, ansi.width(shownValue(value, accent)));
-        body.append(rt.a, if (i == sel and list != null)
+        const greyed = if (row.decided) |d| d(c) else false;
+        body.append(rt.a, if (greyed)
+            rt.concat(&.{ if (i == sel) accent.apply("❯ ") else "  ", ansi.dim(rt.concat(&.{ ansi.pad(row.label, label_width), value })) })
+        else if (i == sel and list != null)
             ansi.dim(rt.concat(&.{ "❯ ", ansi.pad(row.label, label_width), ansi.stripSgr(shownValue(value, accent)) }))
         else if (i == sel)
             rt.concat(&.{ accent.apply("❯ "), accent.apply(ansi.bold(ansi.pad(row.label, label_width))), if (rt.eql(value, "on") or rt.eql(value, "off")) shownValue(value, accent) else accent.apply(value) })
@@ -827,6 +862,10 @@ pub fn runSettings() !Config {
                 sel = 0;
             } else if (isKey(key, "G") or rt.eql(name, "end")) {
                 sel = n - 1;
+            } else if (enter and if (shown[sel].decided) |d| d(c) else false) {
+                notice = rt.concat(&.{ sRouter(c), " picks the model and effort from the profiles; turn Routing off to set them" });
+                drawSettings(c, sel, list, notice, accent);
+                continue;
             } else if (enter) {
                 const ch = if (panel_drawn) choicesOf(shown[sel], c) else null;
                 if (ch == null or ch.?.toggle or ch.?.items.len == 0) {
@@ -944,4 +983,24 @@ test "with the choices holding the keys, the row is greyed and the cursor shows 
     chosen = "codex";
     try cHarness(c, askChosen);
     try std.testing.expectEqualStrings("codex", kindOf(c));
+}
+
+test "with routing on and profiles for the harness, model and effort are the router's and list the profiles" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var map = std.process.Environ.Map.init(arena.allocator());
+    rt.initForTest(arena.allocator(), &map);
+    const c = (try json.parse(
+        \\{"kind":"fx","routing":{"provider":"jev","kinds":{"fx":{"fallback":"b","profiles":{"a":{"model":"m1","thinking":"low","description":"x"},"b":{"model":"m2","description":"y"}}}}}}
+    )).asObj().?;
+    try std.testing.expectEqualStrings("jev picks", vModelRouted(c));
+    try std.testing.expectEqualStrings("jev picks", vEffortRouted(c));
+    const ch = choicesOf(SETTINGS_ROWS[1], c);
+    try std.testing.expect(ch.decided);
+    try std.testing.expectEqual(@as(usize, 2), ch.items.len);
+    try std.testing.expectEqualStrings("a  m1 · low", ansi.stripSgr(ch.items[0].label.?));
+    // Another harness has no profiles: its own model and effort apply.
+    c.putStr("kind", "claude");
+    try std.testing.expect(!routed(c));
+    try std.testing.expectEqualStrings("harness default", vModelRouted(c));
 }
