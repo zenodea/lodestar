@@ -19,10 +19,11 @@
   value. In a list, `ctrl-j`/`ctrl-k` move, `ctrl-l` picks and `ctrl-h`
   backs out; `ctrl-j` used to pick, since terminals send it as a newline. On/off settings show as a dot, the page keeps a margin, and
   long pages scroll. On a wide pane the selected row's choices show beside it, with the current one marked and the
-  `config set` command for it; Enter moves into them (`j`/`k`, Enter picks, `/` searches, `h` goes back). New rows: **Routing** (model routing's provider), **Router key** (the provider's API key; with routing on and profiles for the harness, Model and Effort grey out and list the profiles the router picks from; typed
+  `config set` command for it; Enter moves into them (`j`/`k`, Enter picks, `/` searches, `h` goes back). New rows: **Routing** (model routing's provider), **Router key** (the provider's API key, typed
   without showing and saved to `keys.json`, readable only by you; the environment variable still wins), **Usage pane**
   (`config set --usage-pane on|off`), **Sidebar side**, **Crewmate bar**, **Retry limit**
-  and **Accent**. The accent follows herdr's under herdr and the terminal's palette elsewhere,
+  and **Accent**. With routing on and profiles for the harness, Model and Effort grey out and list the
+  profiles the router picks from. The accent follows herdr's under herdr and the terminal's palette elsewhere,
   so it matches the terminal's theme.
 - **Rex** works as a multiplexer next to herdr and tmux: inside a Rex terminal Lodestar
   uses Rex (or set `LODESTAR_MUX=rex`). The skill now accepts herdr, tmux or Rex.
