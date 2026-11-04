@@ -13,7 +13,7 @@ const Value = json.Value;
 /// crew_bar?, accent?, max_failed_attempts?, stall_minutes?, handoff?, ... }.
 pub const Config = *Obj;
 
-pub const PLACEMENTS = [_][]const u8{ "tab", "split", "background" };
+pub const PLACEMENTS = [_][]const u8{ "tab", "split", "background", "minimized" };
 pub const WORKTREE_MODES = [_][]const u8{ "on", "off", "leader", "shared" };
 pub const SIDEBAR_SIDES = [_][]const u8{ "right", "left" };
 /// "theme" follows the multiplexer's accent, else the terminal's; the names are terminal palette colours, so they follow

@@ -807,6 +807,8 @@ const Sidebar = struct {
         const prev = remote.enterHost(w.get("execution_host")) catch |err| return self.errorMessage(err);
         defer remote.leaveHost(prev);
         _ = mux.agentFocus(sidebarCrewmateTarget(w)) catch |err| self.errorMessage(err);
+        // One minimized window shows at a time: the last one opened goes back when another comes up.
+        if (w.truthy("minimized")) mux.minimizePanes(state.minimizedPanes(self.state, rws[self.sel].run.str("id") orelse "", w.str("pane_id")));
     }
 
     /// The selected crewmate in a window floating over this tab (`lodestar popup`). `always` skips the setting,
@@ -929,6 +931,7 @@ const Sidebar = struct {
         if (rt.eql(n, "o")) {
             if (cur) |c| if (state.orchestratorPane(c.run)) |p| if (p.len > 0) {
                 _ = mux.paneFocus(p) catch |err| self.errorMessage(err);
+                mux.minimizePanes(state.minimizedPanes(self.state, c.run.str("id") orelse "", null));
             };
             return;
         }

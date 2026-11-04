@@ -44,9 +44,15 @@ fn numInt(a: *const Args, name: []const u8, fallback: i64) !i64 {
     return @intFromFloat(@trunc(try args_mod.num(a, name, @floatFromInt(fallback))));
 }
 
-/// The settings may ask for no tabs while this multiplexer has none to spare; tabs then.
-fn backgroundOrTab(placement: []const u8) []const u8 {
-    return if (rt.eql(placement, "background") and !mux.caps().background) "tab" else placement;
+fn canPlace(placement: []const u8) bool {
+    if (rt.eql(placement, "background")) return mux.caps().background;
+    if (rt.eql(placement, "minimized")) return mux.caps().minimized;
+    return true;
+}
+
+/// The settings may ask for a placement this multiplexer doesn't have; tabs then.
+fn placementHere(placement: []const u8) []const u8 {
+    return if (canPlace(placement)) placement else "tab";
 }
 
 fn blank(v: ?[]const u8) bool {
@@ -127,9 +133,9 @@ fn handleCrewmate(a: *const Args) !void {
         if (!rt.eql(direction, "right") and !rt.eql(direction, "down")) return rt.fail(null, "--direction must be right or down", .{});
         const cfg = try config.loadConfig();
         const settings = config.settingsObj(config.settingsOf(cfg));
-        const placement = str(a, "placement") orelse if (has(a, "direction")) "split" else if (str(a, "host") != null) "tab" else backgroundOrTab(settings.str("placement") orelse "tab");
-        if (!rt.oneOf(placement, &config.PLACEMENTS)) return rt.fail(null, "--placement must be tab, split or background", .{});
-        if (rt.eql(placement, "background") and !mux.caps().background) return rt.fail("unsupported", "{s} cannot run a crewmate without a tab; use --placement tab or split", .{mux.mux().name});
+        const placement = str(a, "placement") orelse if (has(a, "direction")) "split" else if (str(a, "host") != null) "tab" else placementHere(settings.str("placement") orelse "tab");
+        if (!rt.oneOf(placement, &config.PLACEMENTS)) return rt.fail(null, "--placement must be tab, split, background or minimized", .{});
+        if (!canPlace(placement)) return rt.fail("unsupported", "{s} cannot run a crewmate without a tab; use --placement tab or split", .{mux.mux().name});
         if (rt.eql(placement, "tab") and has(a, "direction")) return rt.fail(null, "--direction only applies to --placement split (a split without --direction goes right)", .{});
         if (has(a, "worktree") and blank(str(a, "worktree"))) return rt.fail(null, "--worktree takes new or a path", .{});
         const orch_cwd = if (run.obj("orchestrator")) |o| o.str("cwd") orelse "" else "";
@@ -272,6 +278,7 @@ fn handleCrewmate(a: *const Args) !void {
         const prev = try remote.enterHostObj(host);
         defer remote.leaveHost(prev);
         _ = try mux.agentFocus(if (w.truthy("adopted") or host != null) w.str("pane_id") orelse name else name);
+        if (w.truthy("minimized")) mux.minimizePanes(state.minimizedPanes(try state.load(), w.str("run_id") orelse "", w.str("pane_id")));
         return;
     }
     if (rt.eql(sub, "stop")) {

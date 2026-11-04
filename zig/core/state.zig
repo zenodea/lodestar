@@ -363,6 +363,17 @@ pub fn childRuns(s: State, run_id: []const u8, crewmate: []const u8) []Run {
 
 pub const ResolveOpts = struct { run_id: ?[]const u8 = null, pane_id: ?[]const u8 = null, workspace_id: ?[]const u8 = null, allow_closed: bool = false };
 
+/// The panes of the run's crewmates in minimized windows, but for `except`.
+pub fn minimizedPanes(s: State, run_id: []const u8, except: ?[]const u8) []const []const u8 {
+    var out: std.ArrayListUnmanaged([]const u8) = .empty;
+    for (runCrewmates(s, run_id)) |w| {
+        if (!w.truthy("minimized")) continue;
+        const pane = w.strNonEmpty("pane_id") orelse continue;
+        if (except == null or !rt.eql(pane, except.?)) out.append(rt.a, pane) catch {};
+    }
+    return out.items;
+}
+
 pub fn orchestratorPane(r: Run) ?[]const u8 {
     const o = r.obj("orchestrator") orelse return null;
     return o.str("pane_id");

@@ -257,7 +257,7 @@ lodestar crew start NAME --spec "..." | --task ID [--retry]
 | `--router off\|openai\|jev` | Override [model routing](?p=model-routing) for this crewmate only. An explicit model skips routing. |
 | `--cwd D` | Working directory. |
 | `--host NAME` | Start on a remote host (herdr only). Needs `--cwd` with a directory that already exists there; tab placement only. |
-| `--placement tab\|split\|background` | `tab` (default) puts the crewmate in a hidden tab of its own. `split` puts it beside the leader. `background` (Rex only) runs it in no tab; open it from the crew pane as a popup. |
+| `--placement tab\|split\|background\|minimized` | `tab` (default) puts the crewmate in a hidden tab of its own. `split` puts it beside the leader. `background` (Rex only) runs it in no tab; open it from the crew pane as a popup. `minimized` (Rex only) runs it in a minimized floating window of the leader's tab; Enter in the crew pane brings it up. Closing that tab closes it. |
 | `--direction right\|down` | With `split`: which way to split. An error with `tab`. |
 | `--target-pane P` | With `split`: split this pane instead of the crewmate area. |
 | `--ratio R` | With `split`: size of the new pane. |
@@ -695,7 +695,7 @@ lodestar config set [--kind K] [--model M] [--thinking L] [--clear-model] [--cle
 | `--model M`, `--thinking L` | Default model and effort for that agent. |
 | `--clear-model`, `--clear-thinking` | Remove them. |
 | `--default` | Make the selected agent the default. |
-| `--placement tab\|split\|background` | Where new crewmates go. `background` (no tabs) needs Rex; elsewhere it gives hidden tabs. |
+| `--placement tab\|split\|background\|minimized` | Where new crewmates go. `background` (no tabs) and `minimized` need Rex; elsewhere they give hidden tabs. |
 | `--popup on\|off` | Rex: whether `p` in the crew pane opens a crewmate as a popup. |
 | `--worktree-mode on\|off\|leader` | Always give crewmates a worktree, never, or let the leader decide. |
 | `--navigator on\|off` | Whether `run create` opens the Navigator. |

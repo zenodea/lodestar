@@ -43,7 +43,7 @@ fn handoffWith(c: *Obj, key: []const u8, v: json.Value) void {
 
 fn applySettingFlags(c: *Obj, a: *const Args) !void {
     if (str(a, "placement")) |p| {
-        if (!inList(p, &PLACEMENTS)) return rt.fail(null, "--placement takes tab, split or background", .{});
+        if (!inList(p, &PLACEMENTS)) return rt.fail(null, "--placement takes tab, split, background or minimized", .{});
         c.putStr("placement", p);
     }
     if (str(a, "worktree-mode")) |w| {
