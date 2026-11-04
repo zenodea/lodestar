@@ -23,6 +23,7 @@ The Placement setting decides it, as on herdr:
 - **Hidden tabs** (the default): each crewmate gets a window of its own. The crew pane and the usage pane sit beside the leader.
 - **Beside the leader**: the leader keeps the top left, the Navigator the bottom left, and crewmates tile the right half, each new one splitting the biggest crewmate the other way.
 - **No tabs** (Rex only): crewmates run in no window at all. They show in the crew pane like any other crewmate, and Enter opens one as a [popup](#the-popup). Choose it on the settings page, with `lodestar config set --placement background`, or for one crewmate with `lodestar crew start NAME --placement background`.
+- **Minimized windows** (Rex only): each crewmate is a minimized floating window of the leader's tab. Enter in the crew pane brings one up over the leader as its real terminal, leaving the crew pane uncovered, and minimizes the one that was up. `o` minimizes them all and goes back to the leader. Closing the leader's tab closes these crewmates. Choose it on the settings page, with `lodestar config set --placement minimized`, or for one crewmate with `lodestar crew start NAME --placement minimized`.
 
 ## The popup
 
@@ -39,10 +40,10 @@ Select a crewmate in the crew pane and press `p`. A window floats over your tab 
 | Agent status | Native | Reported to Rex by the agents; an extension for pi |
 | Updates | Live event stream | Live event stream |
 | Sidebar, usage pane and Navigator | Yes | Yes |
-| Crewmate placement | Hidden tabs or beside the leader | Hidden tabs, beside the leader, or no tabs |
+| Crewmate placement | Hidden tabs or beside the leader | Hidden tabs, beside the leader, no tabs, or minimized windows |
 | Popup | No | Yes |
 | Worktrees | Opened as a herdr workspace | Plain `git worktree` checkouts |
 | Remote crewmates over SSH | Yes | No |
 | Notifications | herdr's own | macOS notifications |
 
-The settings page only shows what the multiplexer you're in can do: Popup and "no tabs" appear under Rex and stay hidden under herdr and tmux. A config that asks for no tabs gives hidden tabs on a multiplexer that can't run a crewmate without one.
+The settings page only shows what the multiplexer you're in can do: Popup, "no tabs" and "minimized windows" appear under Rex and stay hidden under herdr and tmux. A config that asks for either placement gives hidden tabs on a multiplexer without it.

@@ -55,13 +55,14 @@ const TEXT =
     \\  lodestar host list | show NAME | remove NAME        trusted profiles only; credentials stay in OpenSSH
     \\ Crewmates
     \\  lodestar crew start NAME --spec "..." | --task ID [--retry] [--kind {s}] [--model M] [--thinking L] [--router off|openai|jev] [--cwd D] [--host NAME]
-    \\                    [--placement tab|split|background] [--direction right|down]
+    \\                    [--placement tab|split|background|minimized] [--direction right|down]
     \\                    [--worktree new|PATH [--base REF] [--branch B]] [--title T] [--target-pane P] [--ratio R]
     \\                    [--setup-command STRING [--setup-timeout MS]] [--no-default-args] [--timeout MS] [-- agent args]
     \\                                                hidden tab by default; split fills the right half of your tab, each new crewmate
     \\                                                halving the biggest one the other way. --target-pane, --direction or --ratio
     \\                                                split that one pane instead (--direction is an error with --placement tab). background (Rex):
-    \\                                                no tab at all; open it from the sidebar as a popup. --worktree new: its own
+    \\                                                no tab at all; open it from the sidebar as a popup. minimized (Rex): a minimized
+    \\                                                floating window of your tab, gone if the tab closes. --worktree new: its own
     \\                                                checkout at <repo>-wt/NAME (or $LODESTAR_WORKTREE_DIR/NAME) on lodestar/RUN/NAME
     \\                                                --setup-command runs an explicitly authorized shell hook there once before agent launch
     \\                                                --setup-timeout defaults to {d}ms (maximum {d}ms); hook output is logged privately

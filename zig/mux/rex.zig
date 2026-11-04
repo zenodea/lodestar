@@ -730,16 +730,85 @@ fn writeInput(pane_id: []const u8, bytes: []const u8) anyerror!void {
     _ = try call(session, "com.superlogical.terminal.write", json.object(.{ .{ "block_id", blockTarget(pane_id) }, .{ "args", json.object(.{.{ "data", bytes }}) } }));
 }
 
+/// How a block with no client showing it starts: the user's shell, at a size of its own.
+fn hiddenShellOptions(p: *Obj) *Obj {
+    const options = json.object(.{ .{ "shell", "none" }, .{ "command", json.strArr(envCommand(p.obj("env"), &.{})) } });
+    if (p.strNonEmpty("cwd")) |c| options.putStr("cwd", c);
+    options.put("size", json.object(.{ .{ "columns", p.int("columns") orelse 120 }, .{ "rows", p.int("rows") orelse 40 } }).val());
+    return options;
+}
+
 /// A detached block running the user's shell: it belongs to the session but to no window.
 fn createBackground(p: *Obj) anyerror!*Obj {
     try refuseRemote();
     const session = if (p.strNonEmpty("workspace_id")) |ws| sessionTarget(ws) else rt.getenvNonEmpty("REX_SESSION") orelse return rt.fail("bad_request", "a background pane needs workspace_id outside Rex", .{});
-    const options = json.object(.{ .{ "shell", "none" }, .{ "command", json.strArr(envCommand(p.obj("env"), &.{})) } });
-    if (p.strNonEmpty("cwd")) |c| options.putStr("cwd", c);
-    options.put("size", json.object(.{ .{ "columns", p.int("columns") orelse 120 }, .{ "rows", p.int("rows") orelse 40 } }).val());
+    const options = hiddenShellOptions(p);
     const out = try call(session, "session.new_block", json.object(.{ .{ "flavor", SHELL_FLAVOR }, .{ "label", p.str("label") orelse "crewmate" }, .{ "options", options } }));
     const block = out.strNonEmpty("block_id") orelse return rt.fail("bad_result", "rex did not report the new block", .{});
     return paneRecord(rawPane(paneId(session, block)) catch .{ .session = session, .window = "", .block = block, .label = p.str("label") orelse "" });
+}
+
+/// Where a shown minimized window sits: over the leader's column, with the sidebar's column left uncovered.
+fn minimizedBounds(side: ?[]const u8) *Obj {
+    const left = rt.eqlOpt(side, "left");
+    return json.object(.{ .{ "x", if (left) SIDEBAR_SHARE + 0.01 else 0.01 }, .{ "y", 0.02 }, .{ "w", 1.0 - SIDEBAR_SHARE - 0.02 }, .{ "h", 0.96 } });
+}
+
+/// A floating layer in the pane's window, minimized from the start. Rex shows a new layer until the next call, so it
+/// starts as a speck in the corner and takes its real bounds once minimized.
+fn createMinimized(p: *Obj) anyerror!*Obj {
+    try refuseRemote();
+    const over = p.str("over_pane_id") orelse return rt.fail("bad_request", "a minimized window needs over_pane_id", .{});
+    const session = sessionFor(over) orelse return rt.fail("bad_request", "pane {s} names no Rex session", .{over});
+    const target = blockTarget(over);
+    const window = for (try sessionView(session)) |r| {
+        if (rt.eql(r.block, target)) break r.window;
+    } else return rt.fail("pane_not_found", "pane {s} is in no window", .{over});
+    const out = try call(session, "session.new_layer", json.object(.{
+        .{ "window_id", window },
+        .{ "bounds", json.object(.{ .{ "x", 0.99 }, .{ "y", 0.99 }, .{ "w", 0.01 }, .{ "h", 0.01 } }) },
+        .{ "focus", false },
+        .{ "layout", json.object(.{.{ "block", json.object(.{ .{ "flavor", SHELL_FLAVOR }, .{ "label", p.str("label") orelse "crewmate" }, .{ "options", hiddenShellOptions(p) } }) }}) },
+    }));
+    const layer = out.strNonEmpty("layer_id") orelse return rt.fail("bad_result", "rex did not report the new layer", .{});
+    const ids = out.arr("block_ids") orelse return rt.fail("bad_result", "rex did not report the new block", .{});
+    const block = (if (ids.items.items.len > 0) ids.items.items[0].asStr() else null) orelse return rt.fail("bad_result", "rex did not report the new block", .{});
+    errdefer _ = call(session, "session.close_layer", json.object(.{.{ "layer_id", layer }})) catch {};
+    _ = try call(session, "session.set_layer_state", json.object(.{ .{ "layer_id", layer }, .{ "state", "minimized" } }));
+    _ = try call(session, "session.resize_layer", json.object(.{ .{ "layer_id", layer }, .{ "bounds", minimizedBounds(p.str("side")) } }));
+    return paneRecord(rawPane(paneId(session, block)) catch .{ .session = session, .window = window, .block = block, .label = p.str("label") orelse "" });
+}
+
+/// The layer holding `block` in a `session.view`.
+fn layerOf(view: *Obj, block: []const u8) ?*Obj {
+    const windows = if (view.arr("windows")) |x| x.objs() else return null;
+    for (windows) |w| {
+        const layers = if (w.arr("layers")) |x| x.objs() else continue;
+        for (layers) |l| {
+            const blocks = if (l.arr("blocks")) |x| x.objs() else continue;
+            for (blocks) |b| if (rt.eqlOpt(b.str("block_id"), block)) return l;
+        }
+    }
+    return null;
+}
+
+fn isFloating(layer: *Obj) bool {
+    return rt.eqlOpt(layer.str("kind"), "floating");
+}
+
+fn minimizePanes(pane_ids: []const []const u8) void {
+    var session: []const u8 = "";
+    var view: *Obj = json.newObj();
+    for (pane_ids) |pane| {
+        const s = sessionFor(pane) orelse continue;
+        if (!rt.eql(s, session)) {
+            view = call(s, "session.view", json.newObj()) catch continue;
+            session = s;
+        }
+        const layer = layerOf(view, blockTarget(pane)) orelse continue;
+        if (!isFloating(layer) or rt.eqlOpt(layer.str("state"), "minimized")) continue;
+        _ = call(s, "session.set_layer_state", json.object(.{ .{ "layer_id", layer.str("layer_id") orelse continue }, .{ "state", "minimized" } })) catch {};
+    }
 }
 
 /// Rex applies a size only while no client owns the block, which is the case for a background one.
@@ -788,8 +857,16 @@ fn paneClose(pane_id: []const u8) anyerror!Value {
 
 fn paneFocus(pane_id: []const u8) anyerror!Value {
     try refuseRemote();
-    // Focus is best effort: the app may not be attached to this session.
-    _ = call(sessionFor(pane_id), "session.focus_block", json.object(.{.{ "block_id", blockTarget(pane_id) }})) catch {};
+    // Focus is best effort: the app may not be attached to this session. Focusing a block in a floating layer leaves
+    // the layer where it is in the stack, so a floating one is raised as well as restored.
+    const session = sessionFor(pane_id);
+    const block = blockTarget(pane_id);
+    const layer = if (call(session, "session.view", json.newObj())) |view| layerOf(view, block) else |_| null;
+    if (layer != null and isFloating(layer.?)) {
+        _ = call(session, "session.set_layer_state", json.object(.{ .{ "layer_id", layer.?.str("layer_id") orelse "" }, .{ "state", "normal" }, .{ "focus", true } })) catch {};
+    } else {
+        _ = call(session, "session.focus_block", json.object(.{.{ "block_id", block }})) catch {};
+    }
     showInApps(pane_id);
     return json.newObj().val();
 }
@@ -821,20 +898,18 @@ fn renamePane(pane_id: []const u8, label: ?[]const u8) void {
     _ = call(sessionFor(pane_id), "session.set_block_label", json.object(.{ .{ "block_id", blockTarget(pane_id) }, .{ "label", label orelse "" } })) catch {};
 }
 
-// Rex keeps no title separate from the block's label that Lodestar can set; the label carries both. A detached
-// (background) block has no tab to carry the crewmate's name, so its label keeps the name.
+// Rex keeps no title separate from the block's label that Lodestar can set; the label carries both. A block in no
+// tab's layout (detached, or in a floating layer) has no tab to carry the crewmate's name, so its label keeps the name.
 fn labelPane(pane_id: []const u8, title: ?[]const u8) void {
-    if (isDetached(pane_id)) return;
+    if (!inTabLayout(pane_id)) return;
     renamePane(pane_id, title);
 }
 
-fn isDetached(pane_id: []const u8) bool {
-    const session = sessionFor(pane_id) orelse return false;
-    const listed = call(session, "session.list_blocks", json.newObj()) catch return false;
-    const blocks = if (listed.arr("blocks")) |x| x.objs() else return false;
-    const block = blockTarget(pane_id);
-    for (blocks) |b| if (rt.eqlOpt(b.str("block_id"), block)) return rt.eqlOpt(b.str("placement"), "detached");
-    return false;
+fn inTabLayout(pane_id: []const u8) bool {
+    const session = sessionFor(pane_id) orelse return true;
+    const view = call(session, "session.view", json.newObj()) catch return true;
+    const layer = layerOf(view, blockTarget(pane_id)) orelse return false;
+    return !isFloating(layer);
 }
 
 /// The sidebar column's share of the window: the leader and navigator keep 70%.
@@ -1248,7 +1323,7 @@ fn reachable() bool {
 
 pub const backend: types.Multiplexer = .{
     .name = "rex",
-    .capabilities = .{ .agent_status = .native, .events = true, .layout_tree = true, .arrange = true, .workspaces = false, .float = true, .background = true },
+    .capabilities = .{ .agent_status = .native, .events = true, .layout_tree = true, .arrange = true, .workspaces = false, .float = true, .background = true, .minimized = true },
 
     .listAgents = listAgents,
     .getAgent = getAgent,
@@ -1288,6 +1363,8 @@ pub const backend: types.Multiplexer = .{
     .screenStyled = screenStyled,
     .writeInput = writeInput,
     .createBackground = createBackground,
+    .createMinimized = createMinimized,
+    .minimizePanes = minimizePanes,
     .resizeHidden = resizeHidden,
 };
 
@@ -1335,6 +1412,25 @@ test "session.view parsing finds blocks, their windows and focus" {
     try std.testing.expectEqualStrings("window:w2", blocks[2].window);
     try std.testing.expectEqualStrings("w", blocks[2].window_label);
     try std.testing.expectEqualStrings("zsh", blocks[2].title);
+}
+
+test "layerOf finds a block's layer, and a minimized window leaves the sidebar's side uncovered" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var map = std.process.Environ.Map.init(arena.allocator());
+    rt.initForTest(arena.allocator(), &map);
+    const view = (try json.parse(
+        \\{"windows":[{"window_id":"window:w1","layers":[
+        \\ {"layer_id":"layer:t","kind":"tiled","blocks":[{"block_id":"block:a"}]},
+        \\ {"layer_id":"layer:f","kind":"floating","state":"minimized","blocks":[{"block_id":"block:b"}]}]}]}
+    )).asObj().?;
+    try std.testing.expect(!isFloating(layerOf(view, "block:a").?));
+    try std.testing.expectEqualStrings("layer:f", layerOf(view, "block:b").?.str("layer_id").?);
+    try std.testing.expect(layerOf(view, "block:gone") == null);
+    const right = minimizedBounds("right");
+    try std.testing.expect(right.num("x").? + right.num("w").? <= 1.0 - SIDEBAR_SHARE);
+    const left = minimizedBounds("left");
+    try std.testing.expect(left.num("x").? >= SIDEBAR_SHARE and left.num("x").? + left.num("w").? <= 1.0);
 }
 
 test "event lines map to Lodestar events" {

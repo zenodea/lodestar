@@ -117,6 +117,7 @@ pub fn placementLabel(p: []const u8) []const u8 {
     if (rt.eql(p, "tab")) return "hidden tabs";
     if (rt.eql(p, "split")) return "beside the leader";
     if (rt.eql(p, "background")) return if (mux.caps().background) "no tabs" else "no tabs (hidden tabs here)";
+    if (rt.eql(p, "minimized")) return if (mux.caps().minimized) "minimized windows" else "minimized windows (hidden tabs here)";
     return "undefined";
 }
 
@@ -124,6 +125,7 @@ fn placementPhrase(p: []const u8) []const u8 {
     if (rt.eql(p, "tab")) return "each in a hidden tab of its own";
     if (rt.eql(p, "split")) return "in the right half of your tab, each new one splitting the biggest crewmate the other way";
     if (rt.eql(p, "background")) return if (mux.caps().background) "in no tab at all; the user opens one from the crew pane as a popup" else "each in a hidden tab of its own (no tabs is set, but this multiplexer needs a tab)";
+    if (rt.eql(p, "minimized")) return if (mux.caps().minimized) "each in a minimized floating window of your tab; the user opens one from the crew pane, and closing your tab closes them" else "each in a hidden tab of its own (minimized windows is set, but this multiplexer has none)";
     return "undefined";
 }
 
@@ -245,9 +247,11 @@ fn vPlacement(c: Config) []const u8 {
     return placementLabel(sPlacement(c));
 }
 fn cPlacement(c: Config, ask: Ask) anyerror!void {
-    const all = [_]PickItem{ .{ .value = "tab", .label = "hidden tabs" }, .{ .value = "split", .label = "beside the leader" }, .{ .value = "background", .label = "no tabs" } };
-    const items = if (mux.caps().background) all[0..] else all[0..2];
-    const v = try ask(.{ .title = "New crewmates open in", .items = items, .current = sPlacement(c) });
+    var items: std.ArrayListUnmanaged(PickItem) = .empty;
+    try items.appendSlice(rt.a, &.{ .{ .value = "tab", .label = "hidden tabs" }, .{ .value = "split", .label = "beside the leader" } });
+    if (mux.caps().background) try items.append(rt.a, .{ .value = "background", .label = "no tabs" });
+    if (mux.caps().minimized) try items.append(rt.a, .{ .value = "minimized", .label = "minimized windows" });
+    const v = try ask(.{ .title = "New crewmates open in", .items = items.items, .current = sPlacement(c) });
     if (v) |x| if (x.len > 0) c.putStr("placement", x);
 }
 
@@ -968,6 +972,7 @@ test "the settings page shows the popup row and no-tabs placement only where the
     mux.useMux(&@import("../mux/herdr.zig").backend);
     for (visibleRows()) |r| try std.testing.expect(!rt.eql(r.label, "Popup"));
     try std.testing.expectEqualStrings("no tabs (hidden tabs here)", placementLabel("background"));
+    try std.testing.expectEqualStrings("minimized windows (hidden tabs here)", placementLabel("minimized"));
     mux.useMux(&@import("../mux/rex.zig").backend);
     var popup = false;
     for (visibleRows()) |r| popup = popup or rt.eql(r.label, "Popup");
@@ -986,6 +991,10 @@ test "picking sets a row's value, and a short page scrolls to the selected row" 
     chosen = "background";
     try cPlacement(c, askChosen);
     try std.testing.expectEqualStrings("background", sPlacement(c));
+    chosen = "minimized";
+    try cPlacement(c, askChosen);
+    try std.testing.expectEqualStrings("minimized windows", vPlacement(c));
+    c.putStr("placement", "background");
     chosen = "jev";
     try cRouting(c, askChosen);
     try std.testing.expectEqualStrings("jev", sRouter(c));

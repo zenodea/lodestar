@@ -51,6 +51,8 @@ pub const Capabilities = struct {
     float: bool = false,
     /// Panes that run in no tab at all (`createBackground`), shown through the popup.
     background: bool = false,
+    /// Floating windows that start minimized (`createMinimized`) and come back when focused.
+    minimized: bool = false,
 };
 
 pub const Serviced = struct { events: []MuxEvent, state: ?bool };
@@ -142,6 +144,11 @@ pub const Multiplexer = struct {
     writeInput: ?*const fn (pane_id: []const u8, bytes: []const u8) anyerror!void = null,
     /// { workspace_id, label, cwd?, env?, columns?, rows? } -> pane running the user's shell in no tab.
     createBackground: ?*const fn (p: *Obj) anyerror!*Obj = null,
+    /// { over_pane_id, label, side?, cwd?, env?, columns?, rows? } -> pane running the user's shell in a minimized
+    /// floating window of the pane's tab, which leaves the sidebar's `side` of the tab uncovered when shown. It closes with that tab.
+    createMinimized: ?*const fn (p: *Obj) anyerror!*Obj = null,
+    /// Minimizes the floating windows holding these panes; panes in none, or gone, are skipped.
+    minimizePanes: ?*const fn (pane_ids: []const []const u8) void = null,
     /// Sets a pane's size while no client shows it (a background pane); a no-op otherwise.
     resizeHidden: ?*const fn (pane_id: []const u8, columns: i64, rows: i64) anyerror!void = null,
 };

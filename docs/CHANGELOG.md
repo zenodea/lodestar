@@ -44,6 +44,10 @@
   Turn it off under Popup in the settings or with `lodestar config set --popup off`.
 - On Rex, crewmates can run with **no tab** at all: Placement "no tabs", or
   `--placement background`. They show in the crew pane, and Enter opens one as a popup.
+- On Rex, crewmates can run in **minimized floating windows** of the leader's tab: Placement
+  "minimized windows", or `--placement minimized`. Enter in the crew pane brings one up as its
+  real terminal, leaving the crew pane uncovered, and `o` minimizes them all. Closing the
+  leader's tab closes them.
 - The settings page hides what the multiplexer can't do: Popup and "no tabs" show under
   Rex only. A config asking for no tabs gives hidden tabs under herdr and tmux.
 - In the crew pane, `r` is now called preview (the last lines of a crewmate), next to `p`.

@@ -331,7 +331,7 @@ pub const StartOptions = struct {
     taskId: ?[]const u8 = null,
     retry: bool = false,
     cwd: ?[]const u8 = null,
-    /// "tab" | "split" | "background" (no tab at all; only where the multiplexer can)
+    /// "tab" | "split" | "background" (no tab at all) | "minimized" (a minimized floating window); the last two only where the multiplexer can
     placement: []const u8,
     crewLayout: bool = false,
     /// "right" | "down"
@@ -618,6 +618,17 @@ fn startStages(o: *const StartOptions, task: Task, dispatch_id: []const u8, wt: 
         }
         logEvent(.{ .{ "event", "worktree.ready" }, .{ "run", rid }, .{ "crewmate", o.name }, .{ "path", path }, .{ "branch", val(w, "branch") }, .{ "created", w.truthy("created_by_lodestar") }, .{ "workspace", json.optStr(w.str("workspace_id")) } });
     }
+    if (rt.eql(o.placement, "minimized")) {
+        const over = o.targetPane orelse orch(o.run).str("pane_id") orelse "";
+        if (over.len == 0) return rt.fail(null, "the run has no orchestrator pane; pass --target-pane", .{});
+        const side = config.settingsOf(config.loadConfig() catch json.newObj()).sidebar_side;
+        const pane = try mux.createMinimized(json.object(.{ .{ "over_pane_id", over }, .{ "label", o.name }, .{ "side", side }, .{ "cwd", cwd }, .{ "env", env } }));
+        if (!isTruthyStr(pane.str("pane_id"))) return rt.fail("bad_result", "{s} did not return the new pane", .{mux.mux().name});
+        p.pane = pane;
+        p.pane_created = true;
+        logEvent(.{ .{ "event", "pane.minimized" }, .{ "run", rid }, .{ "crewmate", o.name }, .{ "pane", pane.str("pane_id").? } });
+        return;
+    }
     if (rt.eql(o.placement, "tab") or rt.eql(o.placement, "background")) {
         const or_ = orch(o.run);
         const workspace: ?[]const u8 = blk: {
@@ -763,7 +774,8 @@ pub fn startCrewmate(o_in: StartOptions) !*Obj {
 
     const background = rt.eql(o.placement, "background");
     const bar_off = rt.eqlOpt(rt.getenv("LODESTAR_BAR"), "0") or !config.settingsOf(config.loadConfig() catch json.newObj()).crew_bar;
-    const bar_pane: ?[]const u8 = if (bar_off or o.crewLayout or background) null else blk: {
+    const minimized = rt.eql(o.placement, "minimized");
+    const bar_pane: ?[]const u8 = if (bar_off or o.crewLayout or background or minimized) null else blk: {
         const br = if (wt) |w| w.strNonEmpty("branch") else null;
         break :blk openLeaderBar(o.run, o.name, pane_id, br orelse (if (wt) |w| w.str("branch") else null) orelse fs.basename(cwd), if (br != null) "Branch" else "Dir", task.str("title") orelse "");
     };
@@ -790,6 +802,7 @@ pub fn startCrewmate(o_in: StartOptions) !*Obj {
     if (wt != null) crewmate.putStr("worktree_dispatch_id", dispatch_id);
     crewmate.putBool("awaiting_prompt", true);
     if (background) crewmate.putBool("background", true);
+    if (minimized) crewmate.putBool("minimized", true);
     crewmate.putStr("bar_pane_id", bar_pane);
 
     state.update(void, &RegisterCtx{ .o = &o, .task_id = task_id, .dispatch_id = dispatch_id, .crewmate = crewmate }, registerTx) catch |err| {

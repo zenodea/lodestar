@@ -110,8 +110,10 @@ your tab, each new one splitting the biggest crewmate the other way; a released
 crewmate's neighbour takes its space. Pass `--placement split` yourself only when
 the user wants to watch a crewmate next to you. Under Rex, placement "no tabs"
 (`--placement background`) runs crewmates in no tab at all; the user opens one
-from the sidebar as a popup (Enter, or `p` for any crewmate). Pass it yourself
-only when the user asks.
+from the sidebar as a popup (Enter, or `p` for any crewmate). Placement "minimized
+windows" (`--placement minimized`) runs each in a minimized floating window of your
+tab; Enter in the sidebar brings one up, and they close if your tab closes. Pass
+these yourself only when the user asks.
 Never open, focus, or close crewmate tabs yourself; `lodestar crew focus <name>`
 shows one when the user asks.
 

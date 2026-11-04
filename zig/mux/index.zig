@@ -205,6 +205,14 @@ pub fn createBackground(p: *Obj) !*Obj {
     const f = mux().createBackground orelse return unsupported("createBackground");
     return f(p);
 }
+pub fn createMinimized(p: *Obj) !*Obj {
+    const f = mux().createMinimized orelse return unsupported("createMinimized");
+    return f(p);
+}
+pub fn minimizePanes(pane_ids: []const []const u8) void {
+    if (pane_ids.len == 0) return;
+    if (mux().minimizePanes) |f| f(pane_ids);
+}
 pub fn resizeHidden(pane_id: []const u8, columns: i64, rows: i64) !void {
     const f = mux().resizeHidden orelse return;
     return f(pane_id, columns, rows);

@@ -47,6 +47,7 @@ fn leaderCmd(a: *const Args) !void {
     const pane = state.orchestratorPane(run) orelse "";
     if (pane.len == 0) return rt.fail(null, "run {s} has no orchestrator pane", .{run.str("id") orelse ""});
     _ = try mux.paneFocus(pane);
+    mux.minimizePanes(state.minimizedPanes(try state.load(), run.str("id") orelse "", null));
     shared.outObj(json.object(.{ .{ "run", run.get("id") }, .{ "focused", pane } }));
 }
 

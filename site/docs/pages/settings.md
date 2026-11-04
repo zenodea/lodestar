@@ -16,7 +16,7 @@ It opens in your terminal and covers:
 | Model and effort | The model and thinking level for each harness. With Routing on, they grey out and list the profiles the router picks from per task: yours, or Lodestar's four tiers (quick, standard, deep, ultra) on the newest models. See [Model routing](?p=model-routing) | The harness's own default |
 | Routing | Let OpenAI Decisions or TypeSafe Jev pick each crewmate's model from profiles you approve. See [Model routing](?p=model-routing) | Off |
 | Router key | The routing provider's API key, typed or pasted without showing it and saved to `keys.json` (readable only by you). `OPENAI_API_KEY` or `TYPESAFE_API_KEY` still wins | Not set |
-| Placement | Crewmates in hidden tabs, split beside the leader, or (Rex) in no tab at all | Hidden tabs |
+| Placement | Crewmates in hidden tabs, split beside the leader, or (Rex) in no tab at all or in minimized windows | Hidden tabs |
 | Popup (Rex) | `p` in the crew pane opens the selected crewmate in a window floating over your tab | On |
 | Worktrees | Always give crewmates a worktree, never, or let the leader decide | Leader decides |
 | Navigator | Open the Navigator with every run | On |
@@ -43,7 +43,7 @@ On a wide pane, the selected setting's choices show to the right of the rows, wi
 
 In the full list, letters search, so the keys take ctrl: `ctrl-j` / `ctrl-k` move (as do `ctrl-n` / `ctrl-p` and the arrows), `ctrl-l` picks and `ctrl-h` backs out.
 
-The page only lists what the multiplexer you're in can do. Popup and the "no tabs" placement show under Rex and stay hidden under herdr and tmux.
+The page only lists what the multiplexer you're in can do. Popup and the "no tabs" and "minimized windows" placements show under Rex and stay hidden under herdr and tmux.
 
 On herdr you can bind it to a key as a popup. See [Keyboard shortcuts](#keyboard-shortcuts-herdr).
 
@@ -85,6 +85,7 @@ Automatic model choice per task is covered in [Model routing](?p=model-routing).
 - **Hidden tabs** (the default): each crewmate gets a tab of its own, and the sidebar shows them all.
 - **Beside the leader**: no sidebar. The leader keeps the top left, the Navigator the bottom left, and crewmates fill the right half of the tab, each new one splitting the biggest crewmate the other way. When a crewmate is released, its neighbour takes the space.
 - **No tabs** (Rex only, `--placement background`): crewmates run in no tab. The crew pane lists them, and Enter opens one as a [popup](?p=rex#the-popup). On herdr and tmux this setting gives hidden tabs.
+- **Minimized windows** (Rex only, `--placement minimized`): each crewmate is a minimized floating window of the leader's tab. Enter in the crew pane brings one up over the leader, leaving the crew pane uncovered, and minimizes the one that was up; `o` minimizes them all and goes back to the leader. Unlike the popup, it is the crewmate's real terminal. Closing the leader's tab closes these crewmates; the other placements survive that. On herdr and tmux this setting gives hidden tabs.
 
 Under tmux, new crewmates always split beside the leader.
 
